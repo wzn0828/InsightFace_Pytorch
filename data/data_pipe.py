@@ -12,6 +12,9 @@ import torch
 import mxnet as mx
 from tqdm import tqdm
 
+import random
+random.seed(123)
+
 def de_preprocess(tensor):
     return tensor*0.5 + 0.5
     
@@ -45,7 +48,7 @@ def get_train_loader(conf):
         class_num = vgg_class_num + ms1m_class_num
     elif conf.data_mode == 'emore':
         ds, class_num = get_train_dataset(conf.emore_folder/'imgs')
-    loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=True, pin_memory=conf.pin_memory, num_workers=conf.num_workers)
+    loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=True, pin_memory=conf.pin_memory, num_workers=conf.num_workers, worker_init_fn=random.seed)
     return loader, class_num 
     
 def load_bin(path, rootdir, transform, image_size=[112,112]):
