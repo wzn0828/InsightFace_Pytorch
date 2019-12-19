@@ -207,7 +207,7 @@ class face_learner(object):
                 imgs = imgs.to(conf.device)
                 labels = labels.to(conf.device)
                 self.optimizer.zero_grad()
-                embeddings = l2_norm(self.model(imgs))
+                embeddings = self.model(imgs)
                 thetas, cos_thetas = self.head(embeddings, labels)
                 loss = conf.ce_loss(thetas, labels)
                 loss.backward()

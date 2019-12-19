@@ -254,8 +254,10 @@ class Arcface(Module):
         self.mm = self.sin_m * m  # issue 1
         self.threshold = math.cos(math.pi - m)
     def forward(self, embbedings, label):
-        # weights norm
+        # feature　norm
+        embbedings = l2_norm(embbedings)
         nB = len(embbedings)
+        # weights norm
         kernel_norm = l2_norm(self.kernel,axis=0)
         # cos(theta+m)
         cos_theta = torch.mm(embbedings,kernel_norm)
