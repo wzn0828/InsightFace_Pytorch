@@ -276,7 +276,7 @@ class Arcface(Module):
         idx_ = torch.arange(0, nB, dtype=torch.long)
         output[idx_, label] = cos_theta_m[idx_, label]
         output *= self.s # scale up in order to make softmax work, first introduced in normface
-        return output
+        return output, cos_theta
 
 ##################################  Cosface head #############################################################    
     

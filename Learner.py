@@ -92,7 +92,7 @@ class face_learner(object):
 #         self.writer.add_scalar('{}_val_std'.format(db_name), val_std, self.step)
 #         self.writer.add_scalar('{}_far:False Acceptance Ratio'.format(db_name), far, self.step)
         
-    def evaluate(self, conf, carray, issame, nrof_folds = 5, tta = False):
+    def evaluate(self, conf, carray, issame, dataset, nrof_folds = 5, tta = False):
         self.model.eval()
         idx = 0
         embeddings = np.zeros([len(carray), conf.embedding_size])
@@ -106,7 +106,15 @@ class face_learner(object):
                 else:
                     embeddings[idx:idx + conf.batch_size] = self.model(batch.to(conf.device)).cpu()
                 idx += conf.batch_size
-            if idx < len(carray):
+
+                # tensorboard feature length during testing
+                if idx + conf.batch_size > len(carray):
+                    # the length of features
+                    feature_norms = embeddings.data.norm(p=2, dim=1)
+                    self.writer.add_histogram('Feature_Length/test/' + dataset, feature_norms, self.step)
+                    self.writer.add_scalar('Mean_Feature_Length/test/' + dataset, feature_norms.mean(), self.step)
+
+        if idx < len(carray):
                 batch = torch.tensor(carray[idx:])            
                 if tta:
                     fliped = hflip_batch(batch)
@@ -118,6 +126,7 @@ class face_learner(object):
         buf = gen_plot(fpr, tpr)
         roc_curve = Image.open(buf)
         roc_curve_tensor = trans.ToTensor()(roc_curve)
+
         return accuracy.mean(), best_thresholds.mean(), roc_curve_tensor
     
     def find_lr(self,
@@ -197,23 +206,39 @@ class face_learner(object):
                 labels = labels.to(conf.device)
                 self.optimizer.zero_grad()
                 embeddings = self.model(imgs)
-                thetas = self.head(embeddings, labels)
+                thetas, cos_thetas = self.head(embeddings, labels)
                 loss = conf.ce_loss(thetas, labels)
                 loss.backward()
                 running_loss += loss.item()
                 self.optimizer.step()
                 
                 if self.step % self.board_loss_every == 0 and self.step != 0:
+                    # tensorboard train loss
                     loss_board = running_loss / self.board_loss_every
                     self.writer.add_scalar('train_loss', loss_board, self.step)
                     running_loss = 0.
+
+                    # tensorboard weights cosine and weight norm in self.head
+                    mean_cosine, max_cosine, weight_norm = self.compute_weight_cosine()
+                    self.writer.add_scalar('Weights_Cosine/mean_cosine', mean_cosine, self.step)
+                    self.writer.add_scalar('Weights_Cosine/max_cosine', max_cosine, self.step)
+                    self.writer.add_histogram('Weight_Length', weight_norm, self.step)
+                    self.writer.add_scalar('Weight_Length_Mean', weight_norm.mean(), self.step)
+
+                    # the length of features
+                    feature_norms = embeddings.data.norm(p=2, dim=1)
+                    self.writer.add_histogram('Feature_Length/train', feature_norms, self.step)
+                    self.writer.add_scalar('Mean_Feature_Length/train', feature_norms.mean(), self.step)
+
+                    # the cos_thetas in the head
+                    self.writer.add_histogram('Cos_Thetas/train', cos_thetas, self.step)
                 
                 if self.step % self.evaluate_every == 0 and self.step != 0:
-                    accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.agedb_30, self.agedb_30_issame)
+                    accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.agedb_30, self.agedb_30_issame, 'agedb_30')
                     self.board_val('agedb_30', accuracy, best_threshold, roc_curve_tensor)
-                    accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.lfw, self.lfw_issame)
+                    accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.lfw, self.lfw_issame, 'lfw')
                     self.board_val('lfw', accuracy, best_threshold, roc_curve_tensor)
-                    accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame)
+                    accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame, 'cfp_fp')
                     self.board_val('cfp_fp', accuracy, best_threshold, roc_curve_tensor)
                     self.model.train()
                 if self.step % self.save_every == 0 and self.step != 0:
@@ -251,3 +276,13 @@ class face_learner(object):
         minimum, min_idx = torch.min(dist, dim=1)
         min_idx[minimum > self.threshold] = -1 # if no match, set idx to -1
         return min_idx, minimum
+
+    def compute_weight_cosine(self):
+        weight = self.head.kernel.data
+        weight_norm = weight.norm(dim=0, keepdim=True)
+        weight = weight / weight_norm
+
+        cosine_similarity = torch.matmul(weight.t(), weight).tril(diagonal=-1)
+        mean_cosine_similarity = cosine_similarity.sum() / ((self.class_num * (self.class_num - 1.0)) / 2.0)
+
+        return mean_cosine_similarity, cosine_similarity.max(), weight_norm
