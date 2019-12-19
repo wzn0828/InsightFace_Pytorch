@@ -137,7 +137,7 @@ class Backbone(Module):
         x = self.input_layer(x)
         x = self.body(x)
         x = self.output_layer(x)
-        return l2_norm(x)
+        return x
 
 ##################################  MobileFaceNet #############################################################
     

@@ -104,7 +104,8 @@ class face_learner(object):
                     emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
                     embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch)
                 else:
-                    embeddings[idx:idx + conf.batch_size] = self.model(batch.to(conf.device)).cpu()
+                    emb_batch = self.model(batch.to(conf.device)).cpu()
+                    embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch)
                 idx += conf.batch_size
 
                 # tensorboard feature length during testing
@@ -121,7 +122,8 @@ class face_learner(object):
                     emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
                     embeddings[idx:] = l2_norm(emb_batch)
                 else:
-                    embeddings[idx:] = self.model(batch.to(conf.device)).cpu()
+                    emb_batch = self.model(batch.to(conf.device)).cpu()
+                    embeddings[idx:] = l2_norm(emb_batch)
         tpr, fpr, accuracy, best_thresholds = evaluate(embeddings, issame, nrof_folds)
         buf = gen_plot(fpr, tpr)
         roc_curve = Image.open(buf)
@@ -156,7 +158,7 @@ class face_learner(object):
 
             self.optimizer.zero_grad()
 
-            embeddings = self.model(imgs)
+            embeddings = l2_norm(self.model(imgs))
             thetas = self.head(embeddings, labels)
             loss = conf.ce_loss(thetas, labels)          
           
@@ -205,7 +207,7 @@ class face_learner(object):
                 imgs = imgs.to(conf.device)
                 labels = labels.to(conf.device)
                 self.optimizer.zero_grad()
-                embeddings = self.model(imgs)
+                embeddings = l2_norm(self.model(imgs))
                 thetas, cos_thetas = self.head(embeddings, labels)
                 loss = conf.ce_loss(thetas, labels)
                 loss.backward()
@@ -264,11 +266,11 @@ class face_learner(object):
         for img in faces:
             if tta:
                 mirror = trans.functional.hflip(img)
-                emb = self.model(conf.test_transform(img).to(conf.device).unsqueeze(0))
-                emb_mirror = self.model(conf.test_transform(mirror).to(conf.device).unsqueeze(0))
+                emb = l2_norm(self.model(conf.test_transform(img).to(conf.device).unsqueeze(0)))
+                emb_mirror = l2_norm(self.model(conf.test_transform(mirror).to(conf.device).unsqueeze(0)))
                 embs.append(l2_norm(emb + emb_mirror))
             else:                        
-                embs.append(self.model(conf.test_transform(img).to(conf.device).unsqueeze(0)))
+                embs.append(l2_norm(self.model(conf.test_transform(img).to(conf.device).unsqueeze(0))))
         source_embs = torch.cat(embs)
         
         diff = source_embs.unsqueeze(-1) - target_embs.transpose(1,0).unsqueeze(0)
