@@ -237,6 +237,31 @@ class MobileFaceNet(Module):
         out = self.bn(out)
         return l2_norm(out)
 
+
+##################################  Softmax head#############################################################
+
+class Softmax(Module):
+    # Standard Softmax
+    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5):
+        super(Softmax, self).__init__()
+        self.classnum = classnum
+        self.kernel = Parameter(torch.Tensor(embedding_size, classnum))
+        # initial kernel
+        self.kernel.data.uniform_(-1, 1).renorm_(2,1,1e-5).mul_(1e5)
+
+    def forward(self, embbedings, label):
+        # output
+        output = torch.mm(embbedings, self.kernel)
+        # feature　norm
+        embbeding_norm = l2_norm(embbedings)
+        # weights norm
+        kernel_norm = l2_norm(self.kernel,axis=0)
+        # cos_theta
+        cos_theta = output/(embbeding_norm*kernel_norm)
+
+        return output, cos_theta
+
+
 ##################################  Arcface head #############################################################
 
 class Arcface(Module):
