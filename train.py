@@ -43,6 +43,24 @@ if __name__ == '__main__':
     conf.batch_size = args.batch_size
     conf.num_workers = args.num_workers
     conf.data_mode = args.data_mode
-    learner = face_learner(conf)
 
-    learner.train(conf, args.epochs)
+    # 'softmax', 'normface', 'normface_alter-grad', 'arcface', 'arcface_alter-grad'
+    ## -----local config----- ##
+    conf.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+
+    conf.data_mode = 'casia'
+    conf.head = 'arcface'  # 'softmax', 'normface', 'arcface'
+
+    conf.work_path = Path('Experiments/Casia_Arcface_B100_lr0.02_NoDel/')
+    conf.model_path = conf.work_path / 'models'
+    conf.log_path = conf.work_path / 'log'
+    conf.save_path = conf.work_path / 'save'
+
+    conf.batch_size = 100
+    conf.lr = 0.02
+    conf.epochs = 33
+    conf.milestones = [21, 29]
+    ## -----local config----- ##
+
+    learner = face_learner(conf)
+    learner.train(conf, conf.epochs)
