@@ -253,22 +253,55 @@ class Softmax(Module):
         # output
         output = torch.mm(embbedings, self.kernel)
         # feature　norm
-        embbeding_norm = l2_norm(embbedings)
+        embbeding_norm = torch.norm(embbedings, p=2, dim=1, keepdim=True)
         # weights norm
-        kernel_norm = l2_norm(self.kernel,axis=0)
+        kernel_norm = torch.norm(self.kernel, p=2, dim=0, keepdim=True)
         # cos_theta
         cos_theta = output/(embbeding_norm*kernel_norm)
 
         return output, cos_theta
 
 
+##################################  Normface head#############################################################
+
+class Normface(Module):
+    # Normface
+    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5, alter_grad=False):
+        super(Normface, self).__init__()
+        self.classnum = classnum
+        self.alter_grad = alter_grad
+        self.kernel = Parameter(torch.Tensor(embedding_size, classnum))
+        # initial kernel
+        self.kernel.data.uniform_(-1, 1).renorm_(2,1,1e-5).mul_(1e5)
+        self.s = s  # scalar value default is 64, see normface https://arxiv.org/abs/1704.06369
+        if self.alter_grad:
+            self.register_buffer('kernel_norm', self.kernel.data.new_full((1, classnum), 1.0))
+            self.kernel.register_hook(lambda grad: self.kernel_norm * grad)
+
+    def forward(self, embbedings, label):
+        # output
+        output = torch.mm(embbedings, self.kernel)
+        # feature　norm
+        embbeding_norm = torch.norm(embbedings, p=2, dim=1, keepdim=True)
+        # weights norm
+        kernel_norm = torch.norm(self.kernel, p=2, dim=0, keepdim=True)
+        if self.alter_grad:
+            kernel_norm = kernel_norm.detach()
+            self.kernel_norm.data = kernel_norm.data
+        # cos_theta
+        cos_theta = output/(embbeding_norm*kernel_norm)
+
+        return cos_theta*self.s, cos_theta
+
+
 ##################################  Arcface head #############################################################
 
 class Arcface(Module):
     # implementation of additive margin softmax loss in https://arxiv.org/abs/1801.05599    
-    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5):
+    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5, alter_grad=False):
         super(Arcface, self).__init__()
         self.classnum = classnum
+        self.alter_grad = alter_grad
         self.kernel = Parameter(torch.Tensor(embedding_size,classnum))
         # initial kernel
         self.kernel.data.uniform_(-1, 1).renorm_(2,1,1e-5).mul_(1e5)
@@ -278,30 +311,40 @@ class Arcface(Module):
         self.sin_m = math.sin(m)
         self.mm = self.sin_m * m  # issue 1
         self.threshold = math.cos(math.pi - m)
+        if self.alter_grad:
+            self.register_buffer('kernel_norm', self.kernel.data.new_full((1, classnum), 1.0))
+            self.kernel.register_hook(lambda grad: self.kernel_norm * grad)
     def forward(self, embbedings, label):
         # feature　norm
         embbedings = l2_norm(embbedings)
         nB = len(embbedings)
         # weights norm
-        kernel_norm = l2_norm(self.kernel,axis=0)
+        kernel_norm = torch.norm(self.kernel, p=2, dim=0, keepdim=True)
+        if self.alter_grad:
+            kernel_norm = kernel_norm.detach()
+            self.kernel_norm.data = kernel_norm.data
+        normed_kernel = torch.div(self.kernel, kernel_norm)
+        # del kernel_norm
         # cos(theta+m)
-        cos_theta = torch.mm(embbedings,kernel_norm)
+        cos_theta = torch.mm(embbedings, normed_kernel)
 #         output = torch.mm(embbedings,kernel_norm)
+#         del embbedings, normed_kernel
         cos_theta = cos_theta.clamp(-1,1) # for numerical stability
-        cos_theta_2 = torch.pow(cos_theta, 2)
-        sin_theta_2 = 1 - cos_theta_2
-        sin_theta = torch.sqrt(sin_theta_2)
+        sin_theta = torch.sqrt(1.0 - torch.pow(cos_theta, 2))
         cos_theta_m = (cos_theta * self.cos_m - sin_theta * self.sin_m)
+        # del sin_theta
         # this condition controls the theta+m should in range [0, pi]
         #      0<=theta+m<=pi
         #     -m<=theta<=pi-m
-        cond_v = cos_theta - self.threshold
-        cond_mask = cond_v <= 0
+        cond_mask = (cos_theta - self.threshold) <= 0
         keep_val = (cos_theta - self.mm) # when theta not in [0,pi], use cosface instead
         cos_theta_m[cond_mask] = keep_val[cond_mask]
+        # del cond_mask, keep_val
         output = cos_theta * 1.0 # a little bit hacky way to prevent in_place operation on cos_theta
         idx_ = torch.arange(0, nB, dtype=torch.long)
+        # del nB
         output[idx_, label] = cos_theta_m[idx_, label]
+        # del cos_theta_m, idx_
         output *= self.s # scale up in order to make softmax work, first introduced in normface
         return output, cos_theta
 
