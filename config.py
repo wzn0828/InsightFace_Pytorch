@@ -26,6 +26,7 @@ def get_config(training = True):
     conf.vgg_folder = conf.data_path/'faces_vgg_112x112'
     conf.ms1m_folder = conf.data_path/'faces_ms1m_112x112'
     conf.emore_folder = conf.data_path/'faces_emore'
+    conf.casia_folder = conf.data_path/'faces_casia'
     conf.batch_size = 100 # irse net depth 50 
 #   conf.batch_size = 200 # mobilefacenet
 #--------------------Training Config ------------------------    
