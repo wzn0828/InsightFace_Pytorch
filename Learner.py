@@ -1,5 +1,5 @@
 from data.data_pipe import de_preprocess, get_train_loader, get_val_data
-from model import Backbone, Arcface, Softmax, Normface, MobileFaceNet, Am_softmax, l2_norm
+from model import Backbone, Arcface, Softmax, Normface, ArcfaceOrigin, MobileFaceNet, Am_softmax, l2_norm
 from verifacation import evaluate
 import torch
 from torch import optim
@@ -42,6 +42,10 @@ class face_learner(object):
                 self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
             elif conf.head == 'arcface_alter-grad':
                 self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num, alter_grad=True).to(conf.device)
+            elif conf.head == 'arcface_origin':
+                self.head = ArcfaceOrigin(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
+            elif conf.head == 'arcface_origin_detach-diff':
+                self.head = ArcfaceOrigin(embedding_size=conf.embedding_size, classnum=self.class_num, detach_diff=True).to(conf.device)
 
             print('head:')
             print(self.head)

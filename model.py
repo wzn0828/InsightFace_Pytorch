@@ -374,3 +374,43 @@ class Am_softmax(Module):
         output *= self.s # scale up in order to make softmax work, first introduced in normface
         return output
 
+##################################  ArcfaceOrigin head #############################################################
+
+class ArcfaceOrigin(Module):
+    # implementation of additive margin softmax loss in https://arxiv.org/abs/1801.05599
+    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5, detach_diff=False):
+        super(ArcfaceOrigin, self).__init__()
+        self.classnum = classnum
+        self.detach_diff = detach_diff
+        self.kernel = Parameter(torch.Tensor(embedding_size,classnum))
+        # initial kernel
+        self.kernel.data.uniform_(-1, 1).renorm_(2,1,1e-5).mul_(1e5)
+        self.m = m # the margin value, default is 0.5
+        self.s = s # scalar value default is 64, see normface https://arxiv.org/abs/1704.06369
+
+    def forward(self, embbedings, label):
+        # feature　norm
+        embbedings = l2_norm(embbedings)    # B x 512
+        nB = len(embbedings)    # Batchsize
+        # weights norm
+        normed_kernel = l2_norm(self.kernel, axis=0)    # 512 x class_num
+        # costheta
+        cos_theta = torch.mm(embbedings, normed_kernel)     # B x class_num#
+        cos_theta = cos_theta.clamp(-1, 1) # for numerical stability     # B x class_num
+        # pick the labeled cos theta
+        idx_ = torch.arange(0, nB, dtype=torch.long)
+        labeled_cos = cos_theta[idx_, label]            # B
+        # compute labeled theta
+        labeled_theta = torch.acos(labeled_cos)         # B
+        # add margin
+        labeled_theta += self.m                         # B
+        # compute the diff and expand it
+        labeled_diff = torch.cos(labeled_theta) - labeled_cos  # B
+        diff_expand = labeled_diff.unsqueeze(dim=1) * F.one_hot(label, num_classes=self.classnum)  # B x class_num
+        if self.detach_diff:
+            diff_expand.detach_()
+        # add diff and multiply the scale
+        output = cos_theta * 1.0 + diff_expand                     # B x class_num
+        output *= self.s
+
+        return output, cos_theta
