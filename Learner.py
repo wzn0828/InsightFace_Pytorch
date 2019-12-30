@@ -18,11 +18,13 @@ class face_learner(object):
     def __init__(self, conf, inference=False):
         print(conf)
         if conf.use_mobilfacenet:
-            self.model = MobileFaceNet(conf.embedding_size).to(conf.device)
+            self.model = MobileFaceNet(conf.embedding_size).cuda()
             print('MobileFaceNet model generated')
         else:
-            self.model = Backbone(conf.net_depth, conf.drop_ratio, conf.net_mode).to(conf.device)
+            self.model = Backbone(conf.net_depth, conf.drop_ratio, conf.net_mode).cuda()
             print('{}_{} model generated'.format(conf.net_mode, conf.net_depth))
+
+        self.model = torch.nn.DataParallel(self.model).cuda()
         
         if not inference:
             self.milestones = conf.milestones
@@ -31,24 +33,26 @@ class face_learner(object):
             print('class_num is {}'.format(self.class_num))
             self.writer = SummaryWriter(conf.log_path, max_queue=20)
             self.step = 0
-            # self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
+            # self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
             if conf.head == 'softmax':
-                self.head = Softmax(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
+                self.head = Softmax(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
             elif conf.head == 'normface':
-                self.head = Normface(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
+                self.head = Normface(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
             elif conf.head == 'normface_alter-grad':
-                self.head = Normface(embedding_size=conf.embedding_size, classnum=self.class_num, alter_grad=True).to(conf.device)
+                self.head = Normface(embedding_size=conf.embedding_size, classnum=self.class_num, alter_grad=True).cuda()
             elif conf.head == 'arcface':
-                self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
+                self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
             elif conf.head == 'arcface_alter-grad':
-                self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num, alter_grad=True).to(conf.device)
+                self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num, alter_grad=True).cuda()
             elif conf.head == 'arcface_origin':
-                self.head = ArcfaceOrigin(embedding_size=conf.embedding_size, classnum=self.class_num).to(conf.device)
+                self.head = ArcfaceOrigin(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
             elif conf.head == 'arcface_origin_detach-diff':
-                self.head = ArcfaceOrigin(embedding_size=conf.embedding_size, classnum=self.class_num, detach_diff=True).to(conf.device)
+                self.head = ArcfaceOrigin(embedding_size=conf.embedding_size, classnum=self.class_num, detach_diff=True).cuda()
             elif conf.head == 'arcface_adaptivemargin':
                 self.head = ArcfaceOriginAdaptiveM(embedding_size=conf.embedding_size, classnum=self.class_num, m=conf.margin,
-                                          detach_diff=conf.detach_diff, m_mode=conf.m_mode).to(conf.device)
+                                          detach_diff=conf.detach_diff, m_mode=conf.m_mode).cuda()
+
+            self.head = torch.nn.DataParallel(self.head).cuda()
 
             print('head:')
             print(self.head)
@@ -124,10 +128,10 @@ class face_learner(object):
                 batch = torch.tensor(carray[idx:idx + conf.batch_size])
                 if tta:
                     fliped = hflip_batch(batch)
-                    emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
+                    emb_batch = self.model(batch.cuda()) + self.model(fliped.cuda())
                     embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch)
                 else:
-                    emb_batch = self.model(batch.to(conf.device)).cpu()
+                    emb_batch = self.model(batch.cuda()).cpu()
                     embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch)
                 idx += conf.batch_size
 
@@ -142,10 +146,10 @@ class face_learner(object):
                 batch = torch.tensor(carray[idx:])            
                 if tta:
                     fliped = hflip_batch(batch)
-                    emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
+                    emb_batch = self.model(batch.cuda()) + self.model(fliped.cuda())
                     embeddings[idx:] = l2_norm(emb_batch)
                 else:
-                    emb_batch = self.model(batch.to(conf.device)).cpu()
+                    emb_batch = self.model(batch.cuda()).cpu()
                     embeddings[idx:] = l2_norm(emb_batch)
         tpr, fpr, accuracy, best_thresholds = evaluate(embeddings, issame, nrof_folds)
         buf = gen_plot(fpr, tpr)
@@ -175,8 +179,8 @@ class face_learner(object):
         log_lrs = []
         for i, (imgs, labels) in tqdm(enumerate(self.loader), total=num):
 
-            imgs = imgs.to(conf.device)
-            labels = labels.to(conf.device)
+            imgs = imgs.cuda()
+            labels = labels.cuda()
             batch_num += 1          
 
             self.optimizer.zero_grad()
@@ -229,8 +233,8 @@ class face_learner(object):
             self.writer.add_scalar('Learning_Rate', lr, e+1)
 
             for imgs, labels in tqdm(iter(self.loader)):
-                imgs = imgs.to(conf.device)
-                labels = labels.to(conf.device)
+                imgs = imgs.cuda()
+                labels = labels.cuda()
                 self.optimizer.zero_grad()
                 embeddings = self.model(imgs)
                 thetas, cos_thetas = self.head(embeddings, labels)
@@ -294,11 +298,11 @@ class face_learner(object):
         for img in faces:
             if tta:
                 mirror = trans.functional.hflip(img)
-                emb = l2_norm(self.model(conf.test_transform(img).to(conf.device).unsqueeze(0)))
-                emb_mirror = l2_norm(self.model(conf.test_transform(mirror).to(conf.device).unsqueeze(0)))
+                emb = l2_norm(self.model(conf.test_transform(img).cuda().unsqueeze(0)))
+                emb_mirror = l2_norm(self.model(conf.test_transform(mirror).cuda().unsqueeze(0)))
                 embs.append(l2_norm(emb + emb_mirror))
             else:                        
-                embs.append(l2_norm(self.model(conf.test_transform(img).to(conf.device).unsqueeze(0))))
+                embs.append(l2_norm(self.model(conf.test_transform(img).cuda().unsqueeze(0))))
         source_embs = torch.cat(embs)
         
         diff = source_embs.unsqueeze(-1) - target_embs.transpose(1,0).unsqueeze(0)
