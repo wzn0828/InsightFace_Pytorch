@@ -59,7 +59,7 @@ class face_learner(object):
 
             print('two model heads generated')
 
-            paras_only_bn, paras_wo_bn = separate_bn_paras(self.model)
+            paras_only_bn, paras_wo_bn = separate_bn_paras(self.model.module)
             
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
@@ -69,7 +69,7 @@ class face_learner(object):
                                 ], lr=conf.lr, momentum=conf.momentum)
             else:
                 self.optimizer = optim.SGD([
-                                    {'params': paras_wo_bn + [self.head.kernel], 'weight_decay': 5e-4},
+                                    {'params': paras_wo_bn + [self.head.module.kernel], 'weight_decay': 5e-4},
                                     {'params': paras_only_bn}
                                 ], lr=conf.lr, momentum=conf.momentum)
             print(self.optimizer)
@@ -312,7 +312,7 @@ class face_learner(object):
         return min_idx, minimum
 
     def compute_weight_cosine(self):
-        weight = self.head.kernel.data.cpu()
+        weight = self.head.module.kernel.data.cpu()
         weight_norm = weight.norm(dim=0, keepdim=True)
         weight = weight / weight_norm
 

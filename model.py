@@ -466,9 +466,9 @@ class ArcfaceOriginAdaptiveM(Module):
             m = self.m * theta / math.pi
         elif self.m_mode == 'smaller':
             m = self.m -theta * self.m / math.pi
-        elif self.m == 'fix':
+        elif self.m_mode == 'fix':
             m = self.m
-        elif self.m == 'larger_sqrt':
-            m = self.m * math.sqrt(theta)
+        elif self.m_mode == 'larger_sqrt':
+            m = self.m * torch.sqrt(theta)
 
         return m.detach_()

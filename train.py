@@ -44,22 +44,26 @@ if __name__ == '__main__':
     conf.num_workers = args.num_workers
     conf.data_mode = args.data_mode
 
-    # 'softmax', 'normface', 'normface_alter-grad', 'arcface', 'arcface_alter-grad'
+    # 'softmax', 'normface', 'normface_alter-grad', 'arcface', 'arcface_alter-grad', 'arcface_origin', 'arcface_origin_detach-diff', 'arcface_adaptivemargin'
     ## -----local config----- ##
-    conf.device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+    conf.gpu_id = '0,1,2,3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = conf.gpu_id
 
     conf.data_mode = 'casia'
-    conf.head = 'arcface'  # 'softmax', 'normface', 'arcface'
+    conf.head = 'arcface_adaptivemargin'  # 'softmax', 'normface', 'arcface'
+    conf.margin = 0.6
+    conf.m_mode = 'larger_sqrt'
+    conf.detach_diff = True
 
-    conf.work_path = Path('Experiments/Casia_Arcface_B100_lr0.02_NoDel/')
+    conf.work_path = Path('Experiments/Casia_Arcface-adaptivemargin_m0.6-larger-sqrt_detach-diff_B512_lr0.1/')
     conf.model_path = conf.work_path / 'models'
     conf.log_path = conf.work_path / 'log'
     conf.save_path = conf.work_path / 'save'
 
-    conf.batch_size = 100
-    conf.lr = 0.02
-    conf.epochs = 33
-    conf.milestones = [21, 29]
+    conf.batch_size = 512
+    conf.lr = 0.1
+    conf.epochs = 35
+    conf.milestones = [21, 30]
     ## -----local config----- ##
 
     learner = face_learner(conf)
